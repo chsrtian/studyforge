@@ -28,7 +28,8 @@ COPY . .
 RUN composer install --no-interaction --optimize-autoloader --no-dev
 
 # Install Node dependencies and build Vite assets
-RUN npm install && npm run build
+RUN ENV APP_URL=https://studyforge-production-59dc.up.railway.app
+RUN npm run build
 
 # Set permissions
 RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache
