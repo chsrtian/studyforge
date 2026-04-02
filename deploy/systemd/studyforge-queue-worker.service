@@ -1,0 +1,16 @@
+[Unit]
+Description=StudyForge Queue Worker
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+WorkingDirectory=/var/www/studyforge
+ExecStart=/usr/bin/php /var/www/studyforge/artisan queue:work --queue=default,regeneration --sleep=1 --tries=4 --timeout=180 --max-time=3600
+StandardOutput=append:/var/www/studyforge/storage/logs/queue-worker.log
+StandardError=append:/var/www/studyforge/storage/logs/queue-worker-error.log
+
+[Install]
+WantedBy=multi-user.target

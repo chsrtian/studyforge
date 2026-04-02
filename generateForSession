@@ -1,0 +1,11 @@
+28:    public function store(Request $request, ContentProcessor $contentProcessor)
+32:            'input_source_type' => 'required|in:text,pdf',
+33:            'input_text' => 'required_if:input_source_type,text|nullable|string|min:50|max:50000',
+34:            'pdf_file' => 'required_if:input_source_type,pdf|nullable|file|mimes:pdf|max:10240',
+40:            $sourceType = $request->input('input_source_type');
+43:            $extractedText = $contentProcessor->processAndExtract(
+56:                'input_source_type' => $sourceType,
+89:                $this->generationService->generateForSession($session, $extractedText);
+104:            $safeMessage = 'Failed to create study session.';
+107:                $safeMessage = $e->getMessage();
+110:            return back()->with('error', $safeMessage)->withInput();
