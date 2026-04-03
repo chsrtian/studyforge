@@ -31,8 +31,8 @@ class OtpVerificationController extends Controller
         $secondsLeft = 600;
 
         if ($requestedAt) {
-            $elapsed = now()->diffInSeconds($requestedAt);
-            $secondsLeft = max(0, 600 - $elapsed);
+            $elapsed = (int) now()->diffInSeconds($requestedAt);
+            $secondsLeft = (int) max(0, 600 - $elapsed);
         }
 
         return view('auth.otp-verify', [

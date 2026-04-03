@@ -16,11 +16,17 @@
 <body class="min-h-screen bg-[#f1eff7] font-sans text-slate-900 antialiased">
     <div
         x-data="{
-            secondsLeft: {{ $secondsLeft }},
-            tick() { if (this.secondsLeft > 0) this.secondsLeft--; },
+            secondsLeft: {{ (int) $secondsLeft }},
+            tick() {
+                const current = Number(this.secondsLeft);
+                const normalized = Number.isFinite(current) ? Math.floor(current) : 0;
+                if (normalized > 0) this.secondsLeft = normalized - 1;
+            },
             format() {
-                const m = Math.floor(this.secondsLeft / 60);
-                const s = this.secondsLeft % 60;
+                const current = Number(this.secondsLeft);
+                const total = Number.isFinite(current) ? Math.max(0, Math.floor(current)) : 0;
+                const m = Math.floor(total / 60);
+                const s = total % 60;
                 return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
             },
             otpValues: ['', '', '', '', '', ''],
