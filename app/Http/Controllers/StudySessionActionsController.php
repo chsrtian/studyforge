@@ -22,7 +22,8 @@ class StudySessionActionsController extends Controller
 {
     private const MIN_GENERATED_ITEMS = 15;
     private const MAX_GENERATED_ITEMS = 50;
-    private const REGENERATION_LOCK_TTL_SECONDS = 900;
+    private const REGENERATION_LOCK_TTL_SECONDS = 300;
+    private const REGENERATION_STALE_MINUTES = 4;
 
     public function __construct(
         protected StreakService $streakService,
@@ -36,6 +37,9 @@ class StudySessionActionsController extends Controller
     public function generationStatus(StudySession $studySession): JsonResponse
     {
         $this->authorize('view', $studySession);
+
+        $this->recoverStaleRegenerationStatuses($studySession);
+        $studySession->refresh();
 
         $this->normalizeLegacyProcessingStatus($studySession);
         $studySession->refresh();
@@ -169,9 +173,15 @@ class StudySessionActionsController extends Controller
 
         $lockKey = $this->regenerationLockKey($studySession->id, $section);
         if (! Cache::add($lockKey, now()->toIso8601String(), self::REGENERATION_LOCK_TTL_SECONDS)) {
+            if ($this->recoverRegenerationLockIfStale($studySession, $section, $lockKey)) {
+                $studySession->refresh();
+            }
+
+            if (! Cache::add($lockKey, now()->toIso8601String(), self::REGENERATION_LOCK_TTL_SECONDS)) {
             return redirect()
                 ->route('study_sessions.show', ['studySession' => $studySession->id, 'tab' => $section])
                 ->with('error', ucfirst($section).' regeneration is already in progress. Please wait.');
+            }
         }
 
         $preferences[$section] = [
@@ -200,7 +210,7 @@ class StudySessionActionsController extends Controller
             difficulty: $difficulty,
             count: $count,
             lockKey: $lockKey
-        );
+        )->onQueue('regeneration');
 
         return redirect()
             ->route('study_sessions.show', ['studySession' => $studySession->id, 'tab' => $section])
@@ -320,5 +330,103 @@ class StudySessionActionsController extends Controller
         }
 
         return collect($timestamps)->sortDesc()->first();
+    }
+
+    private function recoverRegenerationLockIfStale(StudySession $studySession, string $section, string $lockKey): bool
+    {
+        $status = (string) data_get($studySession->metadata, "regeneration_status.{$section}.status", '');
+        $updatedAtRaw = data_get($studySession->metadata, "regeneration_status.{$section}.updated_at");
+
+        if (! in_array($status, ['queued', 'processing'], true)) {
+            Cache::forget($lockKey);
+
+            return true;
+        }
+
+        $updatedAt = null;
+        if (is_string($updatedAtRaw) && $updatedAtRaw !== '') {
+            try {
+                $updatedAt = Carbon::parse($updatedAtRaw);
+            } catch (\Throwable) {
+                $updatedAt = null;
+            }
+        }
+
+        if ($updatedAt !== null && $updatedAt->gt(now()->subMinutes(self::REGENERATION_STALE_MINUTES))) {
+            return false;
+        }
+
+        $metadata = is_array($studySession->metadata) ? $studySession->metadata : [];
+        $statusBag = is_array($metadata['regeneration_status'] ?? null)
+            ? $metadata['regeneration_status']
+            : [];
+
+        $statusBag[$section] = [
+            'status' => 'failed',
+            'updated_at' => now()->toIso8601String(),
+            'error' => 'Previous regeneration became stale and was reset automatically.',
+        ];
+
+        $metadata['regeneration_status'] = $statusBag;
+        $studySession->metadata = $metadata;
+        $studySession->save();
+
+        Cache::forget($lockKey);
+
+        return true;
+    }
+
+    private function recoverStaleRegenerationStatuses(StudySession $studySession): void
+    {
+        $metadata = is_array($studySession->metadata) ? $studySession->metadata : [];
+        $statusBag = is_array($metadata['regeneration_status'] ?? null)
+            ? $metadata['regeneration_status']
+            : [];
+
+        $hasChanges = false;
+
+        foreach (['flashcards', 'quiz'] as $section) {
+            $entry = is_array($statusBag[$section] ?? null) ? $statusBag[$section] : null;
+            if (! $entry) {
+                continue;
+            }
+
+            $status = (string) ($entry['status'] ?? '');
+            if (! in_array($status, ['queued', 'processing'], true)) {
+                continue;
+            }
+
+            $updatedAt = null;
+            $updatedAtRaw = $entry['updated_at'] ?? null;
+
+            if (is_string($updatedAtRaw) && $updatedAtRaw !== '') {
+                try {
+                    $updatedAt = Carbon::parse($updatedAtRaw);
+                } catch (\Throwable) {
+                    $updatedAt = null;
+                }
+            }
+
+            if ($updatedAt !== null && $updatedAt->gt(now()->subMinutes(self::REGENERATION_STALE_MINUTES))) {
+                continue;
+            }
+
+            $statusBag[$section] = [
+                'status' => 'failed',
+                'updated_at' => now()->toIso8601String(),
+                'error' => 'Regeneration timed out while waiting for queue processing. Please regenerate again.',
+            ];
+
+            Cache::forget($this->regenerationLockKey($studySession->id, $section));
+            $hasChanges = true;
+        }
+
+        if (! $hasChanges) {
+            return;
+        }
+
+        $metadata['regeneration_status'] = $statusBag;
+        $studySession->metadata = $metadata;
+        $studySession->save();
     }
 }

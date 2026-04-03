@@ -914,7 +914,7 @@ PROMPT;
                 continue;
             }
 
-            $hash = strtolower($normalized);
+            $hash = $this->lineFingerprint($normalized);
             if (isset($seen[$hash])) {
                 continue;
             }
@@ -1469,6 +1469,18 @@ PROMPT;
             return true;
         }
 
+        if (str_contains($normalized, '|') && preg_match('/\b[A-Z]{2,}\s?\d{2,}\b/', $normalized) === 1) {
+            return true;
+        }
+
+        if (str_contains($normalized, '❖') || str_contains($normalized, '•')) {
+            return true;
+        }
+
+        if (preg_match('/\b(?:course\s*outcomes?|learning\s*outcomes?|lesson\s*objectives?)\b/i', $normalized) === 1) {
+            return true;
+        }
+
         $hasTerminalPunctuation = preg_match('/[.!?]$/', $normalized) === 1;
         $looksLikeCourseCode = preg_match('/\b[A-Z]{2,}\s?\d{2,}\b/', $normalized) === 1;
         $wordCount = $this->wordCount($normalized);
@@ -1549,6 +1561,10 @@ PROMPT;
                 continue;
             }
 
+            if ($this->isNearDuplicateCandidate($line, $cleanCandidates)) {
+                continue;
+            }
+
             $seen[$key] = true;
             $cleanCandidates[] = $line;
         }
@@ -1577,12 +1593,89 @@ PROMPT;
         }
 
         usort($scored, fn (array $a, array $b) => ($b['score'] <=> $a['score']));
-        $top = array_slice(array_column($scored, 'sentence'), 0, 2);
-        $bullets = array_map(fn (string $sentence) => '- '.$this->clipText($sentence, 260), $top);
+        $topCandidates = array_values(array_column($scored, 'sentence'));
 
-        return "Based on this study session:\n"
-            .implode("\n", $bullets)
-            ."\n\nIf you want, I can explain this more simply or quiz you on this concept.";
+        $targeted = $this->buildTargetedFallbackAnswer($question, $topCandidates);
+        if ($targeted !== null) {
+            return $targeted;
+        }
+
+        $primary = $this->clipText($topCandidates[0], 260);
+        $secondary = $topCandidates[1] ?? null;
+
+        if ($secondary === null || $this->isNearDuplicateCandidate($secondary, [$primary])) {
+            return $primary;
+        }
+
+        return $primary."\n\nRelated point: ".$this->clipText($secondary, 210);
+    }
+
+    /**
+     * @param array<int, string> $topCandidates
+     */
+    private function buildTargetedFallbackAnswer(string $question, array $topCandidates): ?string
+    {
+        if ($topCandidates === []) {
+            return null;
+        }
+
+        if (preg_match('/^what\s+is\s+(.+?)\??$/i', $question, $matches) === 1) {
+            $topic = $this->normalizeLine((string) ($matches[1] ?? ''));
+            if ($topic !== '') {
+                return ucfirst($topic).' in this lesson: '.$this->clipText($topCandidates[0], 220);
+            }
+        }
+
+        if (preg_match('/types?\s+of\s+(.+?)(?:\?|$)/i', $question, $matches) === 1) {
+            $topic = strtolower($this->normalizeLine((string) ($matches[1] ?? '')));
+            foreach ($topCandidates as $candidate) {
+                $normalized = strtolower($candidate);
+                if ($topic !== '' && ! str_contains($normalized, $topic)) {
+                    continue;
+                }
+
+                if (str_contains($candidate, ':') || substr_count($candidate, ',') >= 1 || str_contains($normalized, 'include')) {
+                    return 'From this study material: '.$this->clipText($candidate, 240);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<int, string> $existing
+     */
+    private function isNearDuplicateCandidate(string $line, array $existing): bool
+    {
+        $fingerprint = $this->lineFingerprint($line);
+        $normalized = strtolower($this->normalizeLine($line));
+
+        foreach ($existing as $value) {
+            $currentFingerprint = $this->lineFingerprint((string) $value);
+            if ($currentFingerprint === $fingerprint) {
+                return true;
+            }
+
+            $current = strtolower($this->normalizeLine((string) $value));
+            if ($current === '' || $normalized === '') {
+                continue;
+            }
+
+            if (str_starts_with($normalized, mb_substr($current, 0, 90)) || str_starts_with($current, mb_substr($normalized, 0, 90))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function lineFingerprint(string $line): string
+    {
+        $normalized = strtolower($this->normalizeLine($line));
+        $alnum = preg_replace('/[^a-z0-9]+/', '', $normalized) ?? $normalized;
+
+        return mb_substr($alnum, 0, 180);
     }
 
     /**
