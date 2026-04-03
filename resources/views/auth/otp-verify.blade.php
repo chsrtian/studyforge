@@ -164,7 +164,14 @@
 
                 <div class="mx-auto mt-6 h-9 w-full rounded-full bg-[radial-gradient(circle_at_center,#f9f9fb_0%,#d7d7df_36%,#9e9ea7_100%)] opacity-90"></div>
 
-                <p class="mt-28 text-center text-xs text-slate-400">&copy; 2024 StudyForge. Institutional Security Standards V2.4</p>
+                <x-public-footer
+                    wrapperClass="mt-20 border-t border-[#dfddea] py-6 dark:border-slate-700"
+                    containerClass="flex flex-col gap-4 text-sm"
+                    brandClass="text-2xl font-bold tracking-tight text-indigo-700 dark:text-indigo-300"
+                    navClass="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500 dark:text-slate-300"
+                    yearClass="text-xs text-slate-500 dark:text-slate-300"
+                    yearLabel="StudyForge. Institutional Security Standards V2.4"
+                />
             </section>
         </main>
     </div>

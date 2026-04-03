@@ -19,6 +19,12 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::view('/help/student-access-guide', 'help.student-access-guide')
+    ->name('help.student-access-guide');
+Route::view('/privacy', 'help.privacy')->name('help.privacy');
+Route::view('/terms', 'help.terms')->name('help.terms');
+Route::view('/support', 'help.support')->name('help.support');
+
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('dashboard');

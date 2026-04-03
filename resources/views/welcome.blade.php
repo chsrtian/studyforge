@@ -45,7 +45,7 @@
                     Get Started Free
                 </a>
                 @endif
-                <a href="#how-it-works" class="inline-flex items-center justify-center px-8 py-3 border border-gray-300 shadow-sm text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors">
+                <a href="#how-it-works-section" class="scroll-smooth inline-flex items-center justify-center px-8 py-3 border border-gray-300 shadow-sm text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors">
                     How it works
                 </a>
             </div>
@@ -73,11 +73,25 @@
                     <p class="text-gray-600">Test your knowledge before the real exam. AI-generated multiple choice questions with explanations.</p>
                 </div>
             </div>
+
+            <section id="how-it-works-section" class="mt-20 w-full max-w-4xl rounded-2xl border border-gray-200 bg-white p-8 text-left shadow-sm">
+                <h2 class="text-3xl font-bold text-gray-900">How StudyForge Works</h2>
+                <ol class="mt-5 list-decimal space-y-3 pl-6 text-lg text-gray-700">
+                    <li>Paste or upload your study material in a new session.</li>
+                    <li>StudyForge generates summaries, flashcards, and quizzes in one workflow.</li>
+                    <li>Review daily and use Chat Tutor to deepen understanding.</li>
+                </ol>
+            </section>
         </main>
 
-        <footer class="bg-white border-t border-gray-200 py-12 text-center text-gray-500 text-sm">
-            <p>&copy; {{ date('Y') }} StudyForge. All rights reserved.</p>
-        </footer>
+        <x-public-footer
+            wrapperClass="border-t border-gray-200 bg-white py-12 dark:border-slate-700 dark:bg-slate-900"
+            containerClass="mx-auto flex w-full max-w-7xl flex-col gap-4 px-6 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-12"
+            brandClass="text-2xl font-bold tracking-tight text-gray-900 dark:text-slate-100"
+            navClass="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs font-medium uppercase tracking-widest text-gray-500 dark:text-slate-300"
+            yearClass="text-sm text-gray-500 dark:text-slate-300"
+            yearLabel="StudyForge. All rights reserved."
+        />
     </div>
 </body>
 </html>

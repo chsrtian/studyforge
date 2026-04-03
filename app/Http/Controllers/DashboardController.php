@@ -81,11 +81,11 @@ class DashboardController extends Controller
         $hour = now()->hour;
 
         if ($hour < 12) {
-            $salutation = 'Good morning';
+            $greeting = 'Good morning';
         } elseif ($hour < 18) {
-            $salutation = 'Good afternoon';
+            $greeting = 'Good afternoon';
         } else {
-            $salutation = 'Good evening';
+            $greeting = 'Good evening';
         }
 
         if ($currentStreak >= 30) {
@@ -128,7 +128,7 @@ class DashboardController extends Controller
         $index = (now()->dayOfYear + $userId) % count($messages);
 
         return [
-            'salutation' => $salutation,
+            'salutation' => $greeting,
             'headline' => $headline,
             'message' => $messages[$index],
         ];

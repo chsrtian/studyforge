@@ -115,15 +115,15 @@
             </div>
 
             @if($studySession->next_review_at)
-                <div class="p-4 rounded-2xl border shadow-sm {{ $studySession->next_review_at->isPast() ? 'border-amber-300/80 bg-amber-100/70 dark:border-amber-300/45 dark:bg-amber-500/14' : 'border-indigo-300/70 bg-indigo-100/80 dark:border-indigo-300/45 dark:bg-indigo-500/14' }}">
-                    <p class="text-sm font-medium {{ $studySession->next_review_at->isPast() ? 'text-amber-900 dark:text-amber-200' : 'text-indigo-900 dark:text-indigo-200' }}">
+                <div class="p-4 rounded-2xl border shadow-sm {{ $studySession->next_review_at->isPast() ? 'border-amber-300/80 bg-amber-100/80 dark:border-amber-400/60 dark:bg-amber-900/40' : 'border-indigo-300/80 bg-indigo-100/80 dark:border-indigo-400/60 dark:bg-indigo-900/45' }}">
+                    <p class="text-sm font-semibold text-black dark:text-white">
                         @if($studySession->next_review_at->isPast())
                             Review due now to strengthen retention.
                         @else
                             Next review scheduled {{ $studySession->next_review_at->diffForHumans() }}.
                         @endif
                     </p>
-                    <p class="text-xs mt-1 {{ $studySession->next_review_at->isPast() ? 'text-amber-700 dark:text-amber-300' : 'text-indigo-700 dark:text-indigo-300' }}">Review count: {{ $studySession->review_count }}</p>
+                    <p class="text-xs mt-1 font-medium text-gray-900 dark:text-gray-100">Review count: {{ $studySession->review_count }}</p>
                 </div>
             @endif
 

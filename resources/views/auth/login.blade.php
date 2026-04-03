@@ -159,31 +159,15 @@
                     </div>
 
                     <div class="pt-1 text-xs text-slate-500">
-                        <a href="#" class="font-medium text-slate-500 transition hover:text-slate-700">Trust Center</a>
-                        <span class="mx-2">Status</span>
+                        <a href="{{ route('help.student-access-guide') }}" class="font-medium text-slate-500 transition hover:text-slate-700">Student Guide</a>
+                        <span class="mx-2">|</span>
+                        <a href="{{ route('help.student-access-guide') }}#api-limits" class="font-medium text-slate-500 transition hover:text-slate-700">API Limits</a>
                     </div>
                 </div>
             </section>
         </main>
 
-        <footer class="mt-8 border-t border-slate-200 py-6">
-            <div class="flex flex-col gap-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-                <a href="{{ url('/') }}" class="text-3xl font-bold tracking-tight text-indigo-700">
-                    StudyForge
-                </a>
-
-                <nav class="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs font-medium uppercase tracking-widest text-slate-500">
-                    <a href="#contact" class="transition hover:text-slate-700">CONTACT</a>
-                    <a href="#privacy" class="transition hover:text-slate-700">PRIVACY</a>
-                    <a href="#terms" class="transition hover:text-slate-700">TERMS</a>
-                    <a href="#support" class="transition hover:text-slate-700">SUPPORT</a>
-                </nav>
-
-                <p class="text-xs font-medium uppercase tracking-wider text-slate-500">
-                    &copy; 2026 STUDYFORGE. ACADEMIC PRECISION.
-                </p>
-            </div>
-        </footer>
+        <x-public-footer wrapperClass="mt-8 border-t border-slate-200 py-6 dark:border-slate-700" />
     </div>
 </body>
 </html>

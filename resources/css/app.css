@@ -35,6 +35,7 @@
 
 	html {
 		background-color: var(--sf-bg);
+		scroll-behavior: smooth;
 	}
 
 	body {

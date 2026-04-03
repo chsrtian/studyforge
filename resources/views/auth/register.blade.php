@@ -157,21 +157,14 @@
             </section>
         </main>
 
-        <footer class="border-t border-[#dfddea] bg-[#eef0f6]">
-            <div class="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-6 sm:px-10 md:flex-row md:items-end md:justify-between">
-                <div>
-                    <p class="text-[32px] font-semibold text-slate-900">StudyForge AI</p>
-                    <p class="mt-2 text-[14px] text-slate-500">&copy; 2024 StudyForge AI. Scholarly Excellence Defined.</p>
-                </div>
-
-                <nav class="flex flex-wrap items-center gap-x-8 gap-y-2 text-[14px] text-slate-500">
-                    <a href="#" class="transition hover:text-slate-700">Privacy Policy</a>
-                    <a href="#" class="transition hover:text-slate-700">Terms of Service</a>
-                    <a href="#" class="transition hover:text-slate-700">Academic Integrity</a>
-                    <a href="#" class="transition hover:text-slate-700">Support</a>
-                </nav>
-            </div>
-        </footer>
+        <x-public-footer
+            wrapperClass="border-t border-[#dfddea] bg-[#eef0f6] py-6 dark:border-slate-700 dark:bg-slate-900"
+            containerClass="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 sm:px-10 md:flex-row md:items-end md:justify-between"
+            brandClass="text-[32px] font-semibold text-slate-900 dark:text-slate-100"
+            navClass="flex flex-wrap items-center gap-x-8 gap-y-2 text-[14px] text-slate-500 dark:text-slate-300"
+            yearClass="mt-2 text-[14px] text-slate-500 dark:text-slate-300"
+            yearLabel="StudyForge AI. Scholarly Excellence Defined."
+        />
     </div>
 </body>
 </html>
