@@ -114,12 +114,6 @@
                 <p class="text-xs">This page refreshes automatically once summary, flashcards, and quiz reach a final state.</p>
             </div>
 
-            <div x-show="workerMessage" x-cloak class="sf-alert-warning">
-                <p class="text-sm font-semibold">Queue worker attention needed</p>
-                <p class="mt-1 text-xs" x-text="workerMessage"></p>
-                <p class="mt-1 text-xs">Run: <span class="font-mono">php artisan queue:work --queue=default,regeneration</span></p>
-            </div>
-
             @if($studySession->next_review_at)
                 <div class="p-4 rounded-2xl border shadow-sm {{ $studySession->next_review_at->isPast() ? 'border-amber-300/80 bg-amber-100/70 dark:border-amber-300/45 dark:bg-amber-500/14' : 'border-indigo-300/70 bg-indigo-100/80 dark:border-indigo-300/45 dark:bg-indigo-500/14' }}">
                     <p class="text-sm font-medium {{ $studySession->next_review_at->isPast() ? 'text-amber-900 dark:text-amber-200' : 'text-indigo-900 dark:text-indigo-200' }}">
@@ -712,7 +706,6 @@
                 quizGenerationStatus: config.initialQuizGenerationStatus,
                 flashRegStatus: config.initialFlashRegStatus,
                 quizRegStatus: config.initialQuizRegStatus,
-                workerMessage: '',
                 isTabSwitching: false,
                 pollTimer: null,
                 init() {
@@ -808,7 +801,6 @@
                         this.quizGenerationStatus = data?.generation_status?.quiz?.status || this.quizGenerationStatus;
                         this.flashRegStatus = data?.regeneration_status?.flashcards?.status || '';
                         this.quizRegStatus = data?.regeneration_status?.quiz?.status || '';
-                        this.workerMessage = data.worker_message || '';
 
                         const sessionCompletedNow = previousSessionStatus !== this.sessionStatus
                             && ['completed', 'failed'].includes(this.sessionStatus);

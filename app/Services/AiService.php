@@ -32,11 +32,9 @@ class AiService
      * @var array<int, string>
      */
     private const GENERIC_STEM_PATTERNS = [
-        '/^what (is|does) (the|this|that)/i',
-        '/^according to the (material|text), which option/i',
-        '/^which option best (matches|reflects)/i',
-        '/^explain (this|the) concept/i',
-        '/^describe the main idea/i',
+        '/^which option best matches the study material/i',
+        '/^explain (this|the) concept\.?$/i',
+        '/^describe the main idea\??$/i',
     ];
 
     /**
@@ -48,6 +46,8 @@ class AiService
         'will', 'would', 'there', 'here', 'using', 'used', 'than', 'then', 'them', 'they', 'also',
         'such', 'each', 'over', 'under', 'between', 'after', 'before', 'within', 'without', 'through',
         'during', 'across', 'these', 'those', 'being', 'been', 'only', 'very', 'more', 'most', 'some',
+        'study', 'material', 'session', 'chapter', 'section', 'lecture', 'week', 'unit', 'course',
+        'title', 'overview', 'introduction', 'pdf', 'page',
     ];
 
     protected string $provider;
@@ -94,8 +94,10 @@ class AiService
     public function generateSummary(string $text): string
     {
         if ($this->mockMode) {
-            return $this->getMockSummary();
+            return $this->buildFallbackSummary($text);
         }
+
+        $source = $this->prepareSourceText($text);
 
         $systemPrompt = <<<PROMPT
 You are a study assistant AI that creates concise, accurate summaries of educational content. Your summaries should:
@@ -104,12 +106,20 @@ You are a study assistant AI that creates concise, accurate summaries of educati
 3. Maintain factual accuracy — never add information not in the original
 4. Be concise but comprehensive
 5. Include a "Key Points" section
+6. Never output placeholder text.
+7. Never include raw document titles, course codes, or filename-like headers as key ideas.
 PROMPT;
 
-        $userPrompt = "Please summarize the following study material:\n\n" . $text;
+        $userPrompt = "Please summarize the following study material:\n\n" . $source;
 
         try {
-            return $this->callAiText($systemPrompt, $userPrompt, 0.3);
+            $summary = $this->callAiText($systemPrompt, $userPrompt, 0.2);
+
+            if ($summary === '' || $this->containsPlaceholderLanguage($summary)) {
+                throw new Exception('Summary output was empty or placeholder-like.');
+            }
+
+            return $summary;
         } catch (\Throwable $e) {
             if (! $this->shouldFallbackFromException($e)) {
                 throw $e;
@@ -134,7 +144,6 @@ PROMPT;
         $source = $this->prepareSourceText($text);
 
         if ($this->mockMode) {
-            sleep(1);
             return [
                 'cards' => $this->buildFallbackFlashcards($source, $difficulty, $itemCount),
             ];
@@ -194,8 +203,6 @@ PROMPT;
         $source = $this->prepareSourceText($text);
 
         if ($this->mockMode) {
-            sleep(1);
-
             return [
                 'questions' => $this->buildFallbackQuizQuestions($source, $difficulty, $itemCount),
             ];
@@ -251,16 +258,30 @@ PROMPT;
     public function generateChatResponse(string $prompt): string
     {
         if ($this->mockMode) {
-            sleep(1);
-            return "This is a simulated chatbot context-aware response based on your question.";
+            return $this->buildFallbackChatResponse($prompt);
         }
 
         // We embed context directly in the prompt built by SessionContextBuilder,
         // so we don't strictly need a separate system prompt here, but we pass
         // a basic identity to fulfill the existing method signature.
-        $systemPrompt = "You are a helpful and expert AI Study Tutor. Respond formatting as Markdown.";
-        
-        return $this->callAiText($systemPrompt, $prompt, 0.7);
+        $systemPrompt = "You are a helpful and expert AI Study Tutor. Answer strictly from SESSION_CONTEXT, use concise Markdown, and avoid any placeholder phrasing.";
+
+        try {
+            $response = $this->callAiText($systemPrompt, $prompt, 0.2);
+
+            if ($response === '' || $this->containsPlaceholderLanguage($response)) {
+                throw new Exception('Chat output was empty or placeholder-like.');
+            }
+
+            return $response;
+        } catch (\Throwable $e) {
+            Log::warning('Falling back to local chat response.', [
+                'provider' => $this->provider,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->buildFallbackChatResponse($prompt);
+        }
     }
 
     /**
@@ -324,15 +345,6 @@ PROMPT;
             Log::error('AiService Exception: ' . $e->getMessage());
             throw new Exception("Unable to generate content at this time. Please try again later.", 0, $e);
         }
-    }
-
-    /**
-     * Return a mock summary for testing without an API key.
-     */
-    protected function getMockSummary(): string
-    {
-        sleep(2); // Simulate network delay
-        return "Summary:\nThis is a mock summary of the provided text. It simulates the AI processing the study material and extracting the core meaning, while saving API costs and bypassing the need for a real API key during development phase.\n\nKey Points:\n- First important concept\n- Second crucial detail\n- The overarching theme\n- Mock test data integration";
     }
 
     /**
@@ -546,21 +558,24 @@ PROMPT;
 
     private function buildFallbackSummary(string $text): string
     {
-        $sentences = $this->extractSentences($text);
-        $summaryLines = array_slice($sentences, 0, 3);
-        $keyPoints = array_slice($sentences, 0, 5);
+        $source = $this->prepareSourceText($text);
+        $facts = $this->extractFactStatements($source, 42);
 
-        $summaryBody = implode(' ', $summaryLines);
-        if ($summaryBody === '') {
-            $summaryBody = 'This material is ready for review, but AI summarization is temporarily unavailable.';
+        if ($facts === []) {
+            return "Summary:\nThe uploaded material was processed, but there was not enough readable lesson content to generate a reliable summary.\n\nKey Points:\n- Upload a clearer text-based PDF or provide longer source text.\n- Avoid scanned images with low OCR quality.\n- Regenerate once the source contains complete lesson paragraphs.";
         }
 
-        $points = array_map(fn (string $sentence) => '- '.$sentence, $keyPoints);
-        if (empty($points)) {
-            $points = ['- Review the uploaded material and extract key concepts manually for now.'];
+        $keywords = $this->extractSourceKeywords($source, 22);
+        $ranked = $this->rankSentencesByKeywordRelevance($facts, $keywords);
+        if ($ranked === []) {
+            $ranked = array_slice($facts, 0, 5);
         }
 
-        return "Summary:\n".$summaryBody."\n\nKey Points:\n".implode("\n", $points);
+        $summaryLines = array_slice($ranked, 0, 3);
+        $keyPoints = array_slice($ranked, 0, 5);
+
+        return "Summary:\n".$this->ensureSentence(implode(' ', $summaryLines))."\n\nKey Points:\n"
+            .implode("\n", array_map(fn (string $sentence) => '- '.$this->trimLeadingConnector($sentence), $keyPoints));
     }
 
     /**
@@ -568,7 +583,11 @@ PROMPT;
      */
     private function buildFallbackFlashcards(string $text, string $difficulty, int $itemCount): array
     {
-        $sentences = $this->extractSentences($text);
+        $sentences = $this->extractFactStatements($text, max($itemCount * 3, 60));
+
+        if ($sentences === []) {
+            return [];
+        }
 
         if ($difficulty === 'hard') {
             return $this->buildHardFallbackFlashcards($sentences, $itemCount);
@@ -595,7 +614,11 @@ PROMPT;
      */
     private function buildFallbackQuizQuestions(string $text, string $difficulty, int $itemCount): array
     {
-        $sentences = $this->extractSentences($text);
+        $sentences = $this->extractFactStatements($text, max($itemCount * 3, 70));
+
+        if ($sentences === []) {
+            return [];
+        }
 
         if ($difficulty === 'hard') {
             return $this->buildHardFallbackQuizQuestions($sentences, $itemCount);
@@ -606,18 +629,11 @@ PROMPT;
 
         for ($i = 0; $i < $itemCount; $i++) {
             $source = $sentences[$i % max(1, count($sentences))] ?? 'Core concept from the study material';
-            $altOne = $sentences[($i + 3) % max(1, count($sentences))] ?? $source;
-            $altTwo = $sentences[($i + 7) % max(1, count($sentences))] ?? $source;
             $concept = $this->extractPrimaryConcept($source);
             $questionTemplate = $templates[$i % count($templates)];
 
             $correctOption = $this->clipText($source, 170);
-            $options = [
-                $this->clipText('It states the opposite of the source claim: '.$this->extractPrimaryConcept($source).' is not used in the process.', 170),
-                $this->clipText('It shifts focus to another point from the material: '.$altOne, 170),
-                $this->clipText('It removes a key condition described by the text: '.$altTwo, 170),
-                $correctOption,
-            ];
+            $options = $this->buildQuizOptions($sentences, $source, $concept, $correctOption, $i);
 
             $correctIndex = $i % 4;
             $correctValue = array_pop($options);
@@ -655,7 +671,7 @@ PROMPT;
             $conceptB = $this->extractPrimaryConcept($secondary);
 
             $cards[] = [
-                'question' => $this->ensureSentence(sprintf('In the source, how does %s interact with %s within the described process', $conceptA, $conceptB)),
+                'question' => $this->ensureSentence(sprintf('In the source content, how does %s relate to %s in the described process', $conceptA, $conceptB)),
                 'answer' => $this->clipText($primary.' '.$secondary, 260),
             ];
         }
@@ -684,19 +700,14 @@ PROMPT;
             $conceptB = $this->extractPrimaryConcept($secondary);
 
             $correctOption = $this->clipText($primary.' '.$secondary, 170);
-            $options = [
-                $this->clipText(sprintf('The source says %s has no relationship with %s and does not affect outcomes.', $conceptA, $conceptB), 170),
-                $this->clipText(sprintf('The material treats %s only as a label and excludes process implications involving %s.', $conceptA, $conceptB), 170),
-                $this->clipText(sprintf('The text presents %s as the sole mechanism and removes any role for %s.', $conceptB, $conceptA), 170),
-                $correctOption,
-            ];
+            $options = $this->buildQuizOptions($sentences, $primary.' '.$secondary, $conceptA, $correctOption, $i + 1);
 
             $correctIndex = $i % 4;
             $correctValue = array_pop($options);
             array_splice($options, $correctIndex, 0, [$correctValue]);
 
             $questions[] = [
-                'question' => $this->ensureSentence(sprintf('Which option best preserves how %s is described relative to %s in the source', $conceptA, $conceptB)),
+                'question' => $this->ensureSentence(sprintf('Which option best preserves how %s is described relative to %s in the source content', $conceptA, $conceptB)),
                 'options' => $options,
                 'correct_answer' => chr(65 + $correctIndex),
                 'explanation' => 'The correct option directly preserves the relationships stated in the source, while the alternatives remove or invert key conditions.',
@@ -711,28 +722,39 @@ PROMPT;
      */
     private function extractSentences(string $text): array
     {
-        $normalized = trim(preg_replace('/\s+/', ' ', $text) ?? '');
-        if ($normalized === '') {
+        $cleaned = $this->cleanSourceForPrompt($text);
+        if ($cleaned === '') {
             return [];
         }
 
-        $parts = preg_split('/(?<=[.!?])\s+/', $normalized) ?: [];
+        $segments = preg_split('/\R+/', $cleaned) ?: [];
         $sentences = [];
 
-        foreach ($parts as $part) {
-            $line = trim((string) $part);
-            if (mb_strlen($line) < 15) {
-                continue;
-            }
+        foreach ($segments as $segment) {
+            $parts = preg_split('/(?<=[.!?;])\s+/', (string) $segment) ?: [];
 
-            $sentences[] = $line;
-            if (count($sentences) >= 60) {
-                break;
+            foreach ($parts as $part) {
+                $line = $this->normalizeLine((string) $part);
+                if ($line === '' || $this->isLikelyHeadingLine($line)) {
+                    continue;
+                }
+
+                if (mb_strlen($line) < 28 && $this->wordCount($line) < 6) {
+                    continue;
+                }
+
+                $sentences[] = $this->ensureSentence($line);
+                if (count($sentences) >= 80) {
+                    break 2;
+                }
             }
         }
 
         if (empty($sentences)) {
-            $sentences[] = $normalized;
+            $fallbackLine = $this->normalizeLine($cleaned);
+            if ($fallbackLine !== '') {
+                $sentences[] = $this->clipText($fallbackLine, 260);
+            }
         }
 
         return $sentences;
@@ -742,8 +764,8 @@ PROMPT;
     {
         $difficultyGuide = $this->difficultyGuide($difficulty);
         $hardRules = $difficulty === 'hard'
-            ? "6) HARD mode: each card must include at least two concrete source terms and one causal or comparative relation.\n"
-              . "7) HARD mode: never answer with only headings, titles, or isolated keywords."
+                        ? "7) HARD mode: each card must include at least two concrete source terms and one causal or comparative relation.\n"
+                            . "8) HARD mode: never answer with only headings, titles, or isolated keywords."
             : '';
 
         return <<<PROMPT
@@ -758,6 +780,7 @@ Strict rules:
 3) Questions must reference concrete terms from the source.
 4) Answers must be specific, complete, and tied to source wording.
 5) Each card must be distinct (no repetitive templates).
+6) Never include document titles, course codes, file names, or heading-only lines as questions or answers.
 {$hardRules}
 
 Output JSON only with exactly {$itemCount} cards:
@@ -773,8 +796,8 @@ PROMPT;
     {
         $difficultyGuide = $this->difficultyGuide($difficulty);
         $hardRules = $difficulty === 'hard'
-            ? "8) HARD mode: question, correct option, and explanation must each include concrete source terms.\n"
-              . "9) HARD mode: options must be complete statements; no fragments or placeholders."
+                        ? "9) HARD mode: question, correct option, and explanation must each include concrete source terms.\n"
+                            . "10) HARD mode: options must be complete statements; no fragments or placeholders."
             : '';
 
         return <<<PROMPT
@@ -791,6 +814,7 @@ Strict rules:
 5) Distractors must be plausible but incorrect.
 6) correct_answer must be A, B, C, or D only.
 7) Provide a concise explanation tied to source evidence.
+8) Never include document titles, course codes, file names, or heading-only lines in questions, options, or explanations.
 {$hardRules}
 
 Output JSON only:
@@ -877,12 +901,16 @@ PROMPT;
         $seen = [];
 
         foreach ($lines as $line) {
-            $normalized = trim((string) preg_replace('/\s+/', ' ', $line));
+            $normalized = $this->normalizeLine((string) $line);
             if ($normalized === '') {
                 continue;
             }
 
             if (preg_match('/^\d+$/', $normalized) === 1) {
+                continue;
+            }
+
+            if ($this->isLikelyHeadingLine($normalized)) {
                 continue;
             }
 
@@ -1178,7 +1206,13 @@ PROMPT;
     {
         $keywords = $this->extractSourceKeywords($sentence, 6);
 
-        return $keywords[0] ?? 'the main concept';
+        foreach ($keywords as $keyword) {
+            if (! $this->isLikelyNoiseKeyword($keyword)) {
+                return $keyword;
+            }
+        }
+
+        return $keywords[0] ?? 'the key concept';
     }
 
     /**
@@ -1292,7 +1326,286 @@ PROMPT;
 
         $max = max($prefixes);
 
-        return $max > (int) floor(count($stems) * 0.45);
+        return $max > (int) floor(count($stems) * 0.7);
+    }
+
+    /**
+     * @param array<int, string> $sentences
+     * @param array<int, string> $keywords
+     * @return array<int, string>
+     */
+    private function rankSentencesByKeywordRelevance(array $sentences, array $keywords): array
+    {
+        $scored = [];
+
+        foreach ($sentences as $sentence) {
+            $line = $this->normalizeLine($sentence);
+            if ($line === '' || $this->isLikelyHeadingLine($line)) {
+                continue;
+            }
+
+            $score = ($this->countSourceKeywordMatches($line, $keywords) * 3)
+                + min(12, $this->wordCount($line));
+
+            $scored[] = [
+                'sentence' => $this->ensureSentence($line),
+                'score' => $score,
+            ];
+        }
+
+        usort($scored, fn (array $a, array $b) => ($b['score'] <=> $a['score']));
+
+        $ranked = [];
+        $seen = [];
+        foreach ($scored as $item) {
+            $key = strtolower($item['sentence']);
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $ranked[] = $item['sentence'];
+        }
+
+        return $ranked;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractFactStatements(string $text, int $limit = 50): array
+    {
+        $sentences = $this->extractSentences($text);
+        if ($sentences === []) {
+            return [];
+        }
+
+        $keywords = $this->extractSourceKeywords(implode(' ', $sentences), 28);
+        $ranked = $this->rankSentencesByKeywordRelevance($sentences, $keywords);
+
+        $facts = [];
+        foreach ($ranked as $sentence) {
+            $line = $this->normalizeLine($sentence);
+            if ($line === '' || $this->containsPlaceholderLanguage($line) || $this->isLikelyHeadingLine($line)) {
+                continue;
+            }
+
+            if ($this->wordCount($line) < 6) {
+                continue;
+            }
+
+            $facts[] = $this->ensureSentence($line);
+            if (count($facts) >= $limit) {
+                break;
+            }
+        }
+
+        return $facts;
+    }
+
+    /**
+     * @param array<int, string> $sentences
+     * @return array<int, string>
+     */
+    private function buildQuizOptions(array $sentences, string $source, string $concept, string $correctOption, int $seed): array
+    {
+        $sentenceCount = max(1, count($sentences));
+        $altOne = $sentences[($seed + 1) % $sentenceCount] ?? $source;
+        $altTwo = $sentences[($seed + 2) % $sentenceCount] ?? $source;
+
+        $altOneConcept = $this->extractPrimaryConcept($altOne);
+        $altTwoConcept = $this->extractPrimaryConcept($altTwo);
+
+        $options = [
+            $this->clipText(sprintf('It claims %s is not involved in the process discussed in the lesson.', $concept), 170),
+            $this->clipText(sprintf('It replaces %s with %s as the main explanation.', $concept, $altOneConcept), 170),
+            $this->clipText(sprintf('It shifts focus to %s instead of explaining %s in context.', $altTwoConcept, $concept), 170),
+            $correctOption,
+        ];
+
+        $nonCorrect = [];
+        $seen = [];
+        foreach (array_slice($options, 0, 3) as $option) {
+            $key = strtolower($option);
+            if (! isset($seen[$key])) {
+                $seen[$key] = true;
+                $nonCorrect[] = $option;
+            }
+        }
+
+        while (count($nonCorrect) < 3) {
+            $fallback = $this->clipText(sprintf('It says %s should be ignored when interpreting the material in this context (%d).', $concept, count($nonCorrect) + 1), 170);
+            $key = strtolower($fallback);
+            if (! isset($seen[$key])) {
+                $seen[$key] = true;
+                $nonCorrect[] = $fallback;
+            }
+        }
+
+        return [
+            $nonCorrect[0],
+            $nonCorrect[1],
+            $nonCorrect[2],
+            $correctOption,
+        ];
+    }
+
+    private function trimLeadingConnector(string $text): string
+    {
+        $normalized = $this->normalizeLine($text);
+        $trimmed = preg_replace('/^(?:[-*•]+\s*|\d+[\.)]\s*)/u', '', $normalized) ?? $normalized;
+
+        return $this->normalizeLine($trimmed);
+    }
+
+    private function isLikelyHeadingLine(string $line): bool
+    {
+        $normalized = $this->normalizeLine($line);
+        if ($normalized === '') {
+            return true;
+        }
+
+        if (preg_match('/^(page\s*\d+|chapter\s*\d+|unit\s*\d+|week\s*\d+)\b/i', $normalized) === 1) {
+            return true;
+        }
+
+        $hasTerminalPunctuation = preg_match('/[.!?]$/', $normalized) === 1;
+        $looksLikeCourseCode = preg_match('/\b[A-Z]{2,}\s?\d{2,}\b/', $normalized) === 1;
+        $wordCount = $this->wordCount($normalized);
+
+        $uppercaseLetters = preg_match_all('/[A-Z]/', $normalized);
+        $alphaLetters = preg_match_all('/[A-Za-z]/', $normalized);
+        $upperRatio = $alphaLetters > 0 ? ($uppercaseLetters / $alphaLetters) : 0;
+
+        if (! $hasTerminalPunctuation && $wordCount <= 12 && ($upperRatio >= 0.65 || $looksLikeCourseCode || str_contains($normalized, '|'))) {
+            return true;
+        }
+
+        return ! $hasTerminalPunctuation && $wordCount <= 4;
+    }
+
+    private function isLikelyNoiseKeyword(string $keyword): bool
+    {
+        $normalized = strtolower(trim($keyword));
+        if ($normalized === '') {
+            return true;
+        }
+
+        if (in_array($normalized, self::STOP_WORDS, true)) {
+            return true;
+        }
+
+        return preg_match('/^(week|chapter|unit|lecture|course|title|page|pdf)$/', $normalized) === 1
+            || preg_match('/^[a-z]{1,2}\d{2,}$/', $normalized) === 1;
+    }
+
+    private function buildFallbackChatResponse(string $prompt): string
+    {
+        $context = $this->extractChatContextPayload($prompt);
+        $question = $this->extractStudentQuestion($prompt);
+
+        if ($question === '') {
+            return 'Ask a specific question about your study material, and I will answer using the current session context.';
+        }
+
+        $candidates = [];
+
+        $summary = $this->normalizeLine((string) ($context['generated_summary'] ?? ''));
+        if ($summary !== '') {
+            $candidates = array_merge($candidates, $this->extractFactStatements($summary, 12));
+        }
+
+        $material = $this->normalizeLine((string) ($context['material'] ?? ''));
+        if ($material !== '') {
+            $candidates = array_merge($candidates, $this->extractFactStatements($material, 40));
+        }
+
+        $flashcards = is_array($context['flashcards'] ?? null) ? $context['flashcards'] : [];
+        foreach ($flashcards as $card) {
+            $answer = $this->normalizeLine((string) ($card['answer'] ?? ''));
+            if ($answer !== '') {
+                $candidates[] = $this->ensureSentence($answer);
+            }
+        }
+
+        $quizItems = is_array($context['quiz'] ?? null) ? $context['quiz'] : [];
+        foreach ($quizItems as $item) {
+            $explanation = $this->normalizeLine((string) ($item['explanation'] ?? ''));
+            if ($explanation !== '') {
+                $candidates[] = $this->ensureSentence($explanation);
+            }
+        }
+
+        $cleanCandidates = [];
+        $seen = [];
+        foreach ($candidates as $candidate) {
+            $line = $this->normalizeLine((string) $candidate);
+            if ($line === '' || $this->isLikelyHeadingLine($line)) {
+                continue;
+            }
+
+            $key = strtolower($line);
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $cleanCandidates[] = $line;
+        }
+
+        if ($cleanCandidates === []) {
+            return "I don't have enough context from this study session to answer that.";
+        }
+
+        $questionKeywords = $this->extractSourceKeywords($question, 10);
+        $scored = [];
+
+        foreach ($cleanCandidates as $candidate) {
+            $overlap = $this->countSourceKeywordMatches($candidate, $questionKeywords);
+            if ($overlap <= 0) {
+                continue;
+            }
+
+            $scored[] = [
+                'sentence' => $candidate,
+                'score' => ($overlap * 4) + min(8, $this->wordCount($candidate)),
+            ];
+        }
+
+        if ($scored === []) {
+            return "I don't have enough context from this study session to answer that.";
+        }
+
+        usort($scored, fn (array $a, array $b) => ($b['score'] <=> $a['score']));
+        $top = array_slice(array_column($scored, 'sentence'), 0, 2);
+        $bullets = array_map(fn (string $sentence) => '- '.$this->clipText($sentence, 260), $top);
+
+        return "Based on this study session:\n"
+            .implode("\n", $bullets)
+            ."\n\nIf you want, I can explain this more simply or quiz you on this concept.";
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function extractChatContextPayload(string $prompt): array
+    {
+        if (preg_match('/SESSION_CONTEXT:\s*(\{[\s\S]*\})\s*STUDENT_QUESTION:/', $prompt, $matches) !== 1) {
+            return [];
+        }
+
+        $decoded = json_decode(trim((string) $matches[1]), true);
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    private function extractStudentQuestion(string $prompt): string
+    {
+        if (preg_match('/STUDENT_QUESTION:\s*([\s\S]*)$/', $prompt, $matches) === 1) {
+            return $this->normalizeLine((string) $matches[1]);
+        }
+
+        return $this->normalizeLine($prompt);
     }
 
     private function normalizeLine(string $text): string

@@ -6,9 +6,9 @@ use App\Models\StudySession;
 
 class SessionContextBuilder
 {
-    private const MAX_MATERIAL_CHARS = 12000;
-    private const MAX_SUMMARY_CHARS = 3500;
-    private const MAX_USER_MESSAGE_CHARS = 1000;
+    private const MAX_MATERIAL_CHARS = 7000;
+    private const MAX_SUMMARY_CHARS = 2200;
+    private const MAX_USER_MESSAGE_CHARS = 600;
 
     /**
      * Builds context for the chat AI grounded in the current study session's material.
@@ -20,10 +20,10 @@ class SessionContextBuilder
         $summary = is_array($summaryOutput?->content)
             ? $this->sanitizeForPrompt((string) ($summaryOutput->content['markdown'] ?? ''), self::MAX_SUMMARY_CHARS)
             : '';
-        $flashcards = $session->flashcards()->limit(10)->get(['question', 'answer'])->toArray();
+        $flashcards = $session->flashcards()->limit(8)->get(['question', 'answer'])->toArray();
         $quizQuestions = $session->quizzes()
             ->with(['questions' => function ($q) {
-                $q->limit(10)->select('quiz_id', 'question', 'correct_answer', 'explanation');
+                $q->limit(8)->select('quiz_id', 'question', 'correct_answer', 'explanation');
             }])
             ->first();
 

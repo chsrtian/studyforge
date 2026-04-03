@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 
 class StudyMaterialGenerationService
 {
-    private const AI_CACHE_SCHEMA_VERSION = 'v2-hard-validation';
+    private const AI_CACHE_SCHEMA_VERSION = 'v3-grounded-content';
     private const MIN_ITEMS = 15;
     private const MAX_ITEMS = 50;
     private const SUMMARY_SOURCE_LIMIT = 22000;
